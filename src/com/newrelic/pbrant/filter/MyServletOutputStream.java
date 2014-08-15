@@ -33,7 +33,6 @@ public class MyServletOutputStream extends ServletOutputStream {
 		try {
 			return new String(buf.toByteArray(), encoding);
 		} catch (UnsupportedEncodingException e) {
-			System.out.println("New Relic Browser Filter -- Unsupported Encoding: " + encoding);
 			throw new RuntimeException(e.getMessage());
 		}
 	}

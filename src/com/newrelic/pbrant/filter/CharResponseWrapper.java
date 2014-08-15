@@ -3,6 +3,7 @@ package com.newrelic.pbrant.filter;
 import java.io.CharArrayWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.logging.Logger;
 
 import javax.servlet.ServletOutputStream;
 import javax.servlet.ServletResponse;
@@ -10,6 +11,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpServletResponseWrapper;
 
 public class CharResponseWrapper extends HttpServletResponseWrapper {
+	private static final Logger logger = Logger.getLogger(NRBrowserFilter.class.getName());
 	private CharArrayWriter outWriter;
 	private MyServletOutputStream outStream;
 	private int contentLength;
@@ -33,7 +35,7 @@ public class CharResponseWrapper extends HttpServletResponseWrapper {
 			return this.toString();
 		}
 		if (outStream != null) {
-			System.out.println("New Relic Browser Filter -- stream using character encoding: " + encoding);
+			logger.fine("New Relic Browser Filter -- stream using character encoding: " + encoding);
 			return outStream.getHtmlString(encoding);
 		}
 		return "";
@@ -42,7 +44,7 @@ public class CharResponseWrapper extends HttpServletResponseWrapper {
 	
 	@Override
 	public void setContentLength(int len) {
-		System.out.println("New Relic Browser Filter -- intercepting content length set: " + len);
+		logger.fine("New Relic Browser Filter -- intercepting content length set: " + len);
 		this.contentLength = len;
 	}
 	
@@ -84,6 +86,6 @@ public class CharResponseWrapper extends HttpServletResponseWrapper {
 			outStream.copyToStream(out);
 			return;
 		}
-		System.out.println("New Relic Browser Filter -- trying to copy original response but no writer or stream created");
+		logger.warning("New Relic Browser Filter -- trying to copy original response but no writer or stream created");
 	}
 }

@@ -2,6 +2,12 @@ package com.newrelic.pbrant.filter;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.FileHandler;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -22,7 +28,7 @@ import com.newrelic.api.agent.NewRelic;
  * 
  */
 public class NRBrowserFilter implements Filter {
-	private FilterConfig filterConfig = null;
+	private static final Logger logger = Logger.getLogger(NRBrowserFilter.class.getName());
 	private static final int flags = Pattern.CASE_INSENSITIVE
 			| Pattern.MULTILINE;
 	private static final String metaRegex = "<\\s*meta[^>]*>";
@@ -78,8 +84,7 @@ public class NRBrowserFilter implements Filter {
 //				 encoding, double byte characters, etc.
 //				 response.setContentLength(html.length());
 
-//				System.out
-//						.println("New Relic Browser Filter setting content length to: "
+//				logger.fine("New Relic Browser Filter setting content length to: "
 //								+ html.length()
 //								+ " response buffer size = "
 //								+ response.getBufferSize());
@@ -88,8 +93,7 @@ public class NRBrowserFilter implements Filter {
 				out.write(html);
 				out.close();
 			} else {
-				System.out
-						.println("New Relic Browser Filter skipping request because content type not text/html or content doesn't start with <html> or <!DOCTYPE html");
+				logger.fine("New Relic Browser Filter skipping request because content type not text/html or content doesn't start with <html> or <!DOCTYPE html");
 				if (wrapper.getContentLength() > 0) {
 					response.setContentLength(wrapper.getContentLength());
 				}
@@ -97,8 +101,7 @@ public class NRBrowserFilter implements Filter {
 			}
 		} catch (Exception e) {
 			// if something goes wrong, try and put the original response back
-			System.out
-					.println("New Relic Browser Filter caught exception in URI: "
+			logger.warning("New Relic Browser Filter caught exception in URI: "
 							+ ((HttpServletRequest) request).getRequestURI()
 									.toLowerCase()
 							+ " original message: "
@@ -144,38 +147,32 @@ public class NRBrowserFilter implements Filter {
 		if (uri.endsWith(".js")) {
 			// skip javascript requests
 			// CBA encodes js requests as text/html
-			System.out
-					.println("New Relic Browser Filter skipping request for .js URI: "
+			logger.fine("New Relic Browser Filter skipping request for .js URI: "
 							+ uri);
 			return true;
 		}
 		if (uri.endsWith(".png")) {
-			System.out
-					.println("New Relic Browser Filter skipping request for png URI: "
+			logger.fine("New Relic Browser Filter skipping request for png URI: "
 							+ uri);
 			return true;
 		}
 		if (uri.endsWith(".jpg")) {
-			System.out
-					.println("New Relic Browser Filter skipping request for jpg URI: "
+			logger.fine("New Relic Browser Filter skipping request for jpg URI: "
 							+ uri);
 			return true;
 		}
 		if (uri.endsWith(".jpeg")) {
-			System.out
-					.println("New Relic Browser Filter skipping request for jpeg URI: "
+			logger.fine("New Relic Browser Filter skipping request for jpeg URI: "
 							+ uri);
 			return true;
 		}
 		if (uri.endsWith(".gif")) {
-			System.out
-					.println("New Relic Browser Filter skipping request for gif URI: "
+			logger.fine("New Relic Browser Filter skipping request for gif URI: "
 							+ uri);
 			return true;
 		}
 		if (uri.endsWith(".css")) {
-			System.out
-					.println("New Relic Browser Filter skipping request for css URI: "
+			logger.fine("New Relic Browser Filter skipping request for css URI: "
 							+ uri);
 			return true;
 		}
@@ -185,8 +182,7 @@ public class NRBrowserFilter implements Filter {
 	private String insertFooter(String html) {
 		Matcher endBody = endBodyPattern.matcher(html);
 		if (endBody.find()) {
-			System.out
-					.println("New Relic Browser Filter found the end body tag at index: "
+			logger.fine("New Relic Browser Filter found the end body tag at index: "
 							+ endBody.start());
 			return endBody.replaceAll(com.newrelic.api.agent.NewRelic
 					.getBrowserTimingFooter() + "\n</body>");
@@ -205,7 +201,7 @@ public class NRBrowserFilter implements Filter {
 		StringBuffer outputHtml = new StringBuffer(html.length() + 10000);
 		outputHtml.append(html.substring(0, index));
 		String nrHeader = NewRelic.getBrowserTimingHeader();
-		System.out.println("New Relic Browser filter adding header of length: "
+		logger.fine("New Relic Browser filter adding header of length: "
 				+ nrHeader.length());
 		outputHtml.append(nrHeader);
 		outputHtml.append(html.substring(index));
@@ -268,14 +264,29 @@ public class NRBrowserFilter implements Filter {
 	 * @see Filter#init(FilterConfig)
 	 */
 	public void init(FilterConfig fConfig) throws ServletException {
-		this.filterConfig = fConfig;
-		System.out.println("New Relic Browser Filter V20140814 initialized");
+		Handler handlers[] = logger.getHandlers();
+		if (handlers.length == 0) {
+			try {
+				String logFilename = fConfig.getInitParameter("LogFile");
+				String logLevel =fConfig.getInitParameter("LogLevel");
+				if (logFilename != null && logFilename.length() > 0 ) {
+					FileHandler handler = new FileHandler(logFilename);
+					handler.setFormatter(new SimpleFormatter());
+					logger.addHandler(handler);
+					logger.setLevel(Level.parse(logLevel));
+				}
+			} catch (SecurityException e) {
+				e.printStackTrace();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		logger.config("New Relic Browser Filter V20140814 initialized");
 	}
 
 	/**
 	 * @see Filter#destroy()
 	 */
 	public void destroy() {
-		this.filterConfig = null;
 	}
 }
