@@ -52,6 +52,10 @@ public class NRBrowserFilter implements Filter {
 	private static final String htmlRegex = "\\A\\s*<\\s*html";
 	private static final Pattern htmlPattern = Pattern
 			.compile(htmlRegex, flags);
+	
+	private int numberRequestsProcessed = 0;
+	private long currentIntervalStart = 0;
+	private int maxRequestsPerSecond = 0;
 
 	/**
 	 * @see Filter#doFilter(ServletRequest, ServletResponse, FilterChain)
@@ -59,7 +63,7 @@ public class NRBrowserFilter implements Filter {
 	public void doFilter(ServletRequest request, ServletResponse response,
 			FilterChain chain) throws IOException, ServletException {
 
-		if (this.shouldSkipRequest(request)) {
+		if (this.shouldSkipRequest(request) || this.isRequestThrottled()) {
 			chain.doFilter(request, response);
 			return;
 		}
@@ -77,18 +81,8 @@ public class NRBrowserFilter implements Filter {
 			}
 
 			if (this.shouldProcessResponse(html)) {
-				html = this.insertHeader(html);
-				html = this.insertFooter(html);
-
-//				 Can't use string length for content length -- need to know
-//				 encoding, double byte characters, etc.
-//				 response.setContentLength(html.length());
-
-//				logger.fine("New Relic Browser Filter setting content length to: "
-//								+ html.length()
-//								+ " response buffer size = "
-//								+ response.getBufferSize());
-
+			
+				html = this.insertNewRelicJS(html);
 				PrintWriter out = response.getWriter();
 				out.write(html);
 				out.close();
@@ -176,38 +170,52 @@ public class NRBrowserFilter implements Filter {
 							+ uri);
 			return true;
 		}
+		logger.finer("New Relic Browser Filter processing URI " + uri);
 		return false;
 	}
 
-	private String insertFooter(String html) {
-		Matcher endBody = endBodyPattern.matcher(html);
-		if (endBody.find()) {
-			logger.fine("New Relic Browser Filter found the end body tag at index: "
-							+ endBody.start());
-			return endBody.replaceAll(com.newrelic.api.agent.NewRelic
-					.getBrowserTimingFooter() + "\n</body>");
-		} else {
-			// if no body tag then add footer at bottom with </body and </html>
-			// return html + "\n" + NewRelic.getBrowserTimingFooter()
-			// + "\n</body>\n</html>";
-			throw new IllegalArgumentException(
-					"New Relic Browser Filter could NOT find where to insert New Relic Footer (no end body tag)");
-		}
-	}
-
-	private String insertHeader(String html) {
-		int index = findHeaderIndex(html);
-
-		StringBuffer outputHtml = new StringBuffer(html.length() + 10000);
-		outputHtml.append(html.substring(0, index));
+	private String insertNewRelicJS(String html) {
 		String nrHeader = NewRelic.getBrowserTimingHeader();
-		logger.fine("New Relic Browser filter adding header of length: "
-				+ nrHeader.length());
+		if (nrHeader == null || nrHeader.length() == 0) {
+			return html;
+		}
+		String footer = NewRelic.getBrowserTimingFooter();
+		if (footer == null || footer.length() == 0) {
+			return html;
+		}
+		int headerIndex = findHeaderIndex(html);
+		if (headerIndex == 0) {
+			return html;
+		}
+		int footerIndex = findFooterIndex(html);
+		if (footerIndex == 0) {
+			return html;
+		}
+		
+		logger.finer("New Relic Browser Filter inserting NRJS. Header at: " + headerIndex + " Footer at: " + footerIndex);
+		
+		StringBuffer outputHtml = new StringBuffer(html.length() + 2000);
+		String origSnippet = html.substring(0, headerIndex);
+		outputHtml.append(origSnippet);
 		outputHtml.append(nrHeader);
-		outputHtml.append(html.substring(index));
+		outputHtml.append("\n");
+		origSnippet = html.substring(headerIndex, footerIndex);
+		outputHtml.append(origSnippet);
+		outputHtml.append(footer);
+		outputHtml.append("\n");
+		origSnippet = html.substring(footerIndex);
+		outputHtml.append(origSnippet);
 		return outputHtml.toString();
 	}
-
+	
+	private int findFooterIndex(String html) {
+		Matcher endBody = endBodyPattern.matcher(html);
+		if (endBody.find()) {
+			return endBody.start();
+		}
+		return 0;
+	}
+	
 	private int findHeaderIndex(String html) {
 		int metaIndex = findMetaIndex(html, metaPattern);
 		int scriptIndex = findScriptIndex(html);
@@ -230,8 +238,7 @@ public class NRBrowserFilter implements Filter {
 				}
 			}
 		}
-		throw new IllegalArgumentException(
-				"Couldn't find where to put the header");
+		return 0;
 	}
 
 	private int findMetaIndex(String html, Pattern regex) {
@@ -260,6 +267,25 @@ public class NRBrowserFilter implements Filter {
 		return index;
 	}
 
+	private boolean isRequestThrottled() {
+		if (maxRequestsPerSecond == 0) {
+			return false;
+		}
+		return isRequestLimitExceeded(System.currentTimeMillis());
+	}
+	
+	private synchronized boolean isRequestLimitExceeded(long currentTime) {
+		if (currentTime - currentIntervalStart > 1000) {
+			// new 1 second interval
+			currentIntervalStart = currentTime;
+			numberRequestsProcessed = 0;
+			return false;
+		}
+		
+		numberRequestsProcessed++;
+		return numberRequestsProcessed >= maxRequestsPerSecond;
+	}
+	
 	/**
 	 * @see Filter#init(FilterConfig)
 	 */
@@ -281,7 +307,12 @@ public class NRBrowserFilter implements Filter {
 				e.printStackTrace();
 			}
 		}
-		logger.config("New Relic Browser Filter V20140814 initialized");
+		
+		String configMaxRequestsPerSecond = fConfig.getInitParameter("MaxRequestsPerSecond");
+		if (configMaxRequestsPerSecond != null && configMaxRequestsPerSecond.length() > 0) {
+			maxRequestsPerSecond = Integer.parseInt(configMaxRequestsPerSecond);
+		}
+		logger.config("New Relic Browser Filter V20140820 initialized");
 	}
 
 	/**

@@ -86,6 +86,6 @@ public class CharResponseWrapper extends HttpServletResponseWrapper {
 			outStream.copyToStream(out);
 			return;
 		}
-		logger.warning("New Relic Browser Filter -- trying to copy original response but no writer or stream created");
+		logger.info("New Relic Browser Filter -- trying to copy original response but no writer or stream created");
 	}
 }
