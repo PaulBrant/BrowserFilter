@@ -2,7 +2,6 @@ package com.newrelic.pbrant.filter;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Handler;
 import java.util.logging.Level;
@@ -81,10 +80,8 @@ public class NRBrowserFilter implements Filter {
 			}
 
 			if (this.shouldProcessResponse(html)) {
-			
-				html = this.insertNewRelicJS(html);
 				PrintWriter out = response.getWriter();
-				out.write(html);
+				this.insertNewRelicJS(html, out);
 				out.close();
 			} else {
 				logger.fine("New Relic Browser Filter skipping request because content type not text/html or content doesn't start with <html> or <!DOCTYPE html");
@@ -174,38 +171,43 @@ public class NRBrowserFilter implements Filter {
 		return false;
 	}
 
-	private String insertNewRelicJS(String html) {
+	private void insertNewRelicJS(String html, PrintWriter out) {
 		String nrHeader = NewRelic.getBrowserTimingHeader();
 		if (nrHeader == null || nrHeader.length() == 0) {
-			return html;
+			out.write(html);
+			return;
 		}
 		String footer = NewRelic.getBrowserTimingFooter();
 		if (footer == null || footer.length() == 0) {
-			return html;
+			out.write(html);
+			return;
 		}
 		int headerIndex = findHeaderIndex(html);
 		if (headerIndex == 0) {
-			return html;
+			out.write(html);
+			return;
 		}
 		int footerIndex = findFooterIndex(html);
 		if (footerIndex == 0) {
-			return html;
+			out.write(html);
+			return;
 		}
 		
 		logger.finer("New Relic Browser Filter inserting NRJS. Header at: " + headerIndex + " Footer at: " + footerIndex);
 		
-		StringBuffer outputHtml = new StringBuffer(html.length() + 2000);
 		String origSnippet = html.substring(0, headerIndex);
-		outputHtml.append(origSnippet);
-		outputHtml.append(nrHeader);
-		outputHtml.append("\n");
+		out.write(origSnippet);
+		out.write(nrHeader);
+		out.write("\n");
+
 		origSnippet = html.substring(headerIndex, footerIndex);
-		outputHtml.append(origSnippet);
-		outputHtml.append(footer);
-		outputHtml.append("\n");
+		out.write(origSnippet);
+		out.write(footer);
+		out.write("\n");
+
 		origSnippet = html.substring(footerIndex);
-		outputHtml.append(origSnippet);
-		return outputHtml.toString();
+		out.write(origSnippet);
+
 	}
 	
 	private int findFooterIndex(String html) {
